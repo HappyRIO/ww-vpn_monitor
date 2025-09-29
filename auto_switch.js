@@ -27,7 +27,7 @@ function reconnectNordVPN(reason = "Switch") {
     }
     console.log("Disconnected:", stdout || stderr);
 
-    exec(`${nordvpnExe} -c`, (err2, stdout2, stderr2) => {
+    exec(`${nordvpnExe} -c -g "Mexico"`, (err2, stdout2, stderr2) => {
       if (err2) {
         console.error("Error connecting:", err2.message);
         return;
