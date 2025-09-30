@@ -17,25 +17,33 @@ if (!fs.existsSync(path.join("C:", "Program Files", "NordVPN", "nordvpn.exe"))) 
 console.log("✅ Script started");
 
 // Function to run NordVPN CLI
+let reconnecting = false;
+
 function reconnectNordVPN(reason = "Switch") {
+  if (reconnecting) return; // Skip if already reconnecting
+  reconnecting = true;
+
   console.log(`\n[${new Date().toISOString()}] Reconnecting NordVPN (${reason})...`);
 
   exec(`${nordvpnExe} -d`, (err, stdout, stderr) => {
     if (err) {
       console.error("Error disconnecting:", err.message);
+      reconnecting = false; // Reset flag even on error
       return;
     }
     console.log("Disconnected:", stdout || stderr);
 
-    exec(`${nordvpnExe} -c -g "Mexico"`, (err2, stdout2, stderr2) => {
+    exec(`${nordvpnExe} -c -g "Canada"`, (err2, stdout2, stderr2) => {
       if (err2) {
         console.error("Error connecting:", err2.message);
-        return;
+      } else {
+        console.log("Connected:", stdout2 || stderr2);
       }
-      console.log("Connected:", stdout2 || stderr2);
+      reconnecting = false; // Reset flag once reconnect attempt finishes
     });
   });
 }
+
 
 // Function to check server status
 async function checkServer() {
