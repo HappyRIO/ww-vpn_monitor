@@ -14,60 +14,90 @@ if (!fs.existsSync(path.join("C:", "Program Files", "NordVPN", "nordvpn.exe"))) 
   process.exit(1);
 }
 
-console.log("✅ Script started");
+// ────────────────────────────────────────────────────────────────
+// Logging helper
+// ────────────────────────────────────────────────────────────────
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  console.log(line.trim());
+  fs.appendFileSync("vpn-monitor.log", line);
+}
 
-// Function to run NordVPN CLI
+log("✅ Script started");
+
+// ────────────────────────────────────────────────────────────────
+// Globals
+// ────────────────────────────────────────────────────────────────
 let reconnecting = false;
+let cooldownUntil = 0;
 
+// ────────────────────────────────────────────────────────────────
+// VPN Reconnect
+// ────────────────────────────────────────────────────────────────
 function reconnectNordVPN(reason = "Switch") {
-  if (reconnecting) return; // Skip if already reconnecting
+  if (reconnecting) return;
   reconnecting = true;
 
-  console.log(`\n[${new Date().toISOString()}] Reconnecting NordVPN (${reason})...`);
+  log(`Reconnecting NordVPN (${reason})...`);
+  cooldownUntil = Date.now() + 30000; // 30-second cooldown
 
   exec(`${nordvpnExe} -d`, (err, stdout, stderr) => {
     if (err) {
-      console.error("Error disconnecting:", err.message);
-      reconnecting = false; // Reset flag even on error
+      log("❌ Error disconnecting: " + err.message);
+      reconnecting = false;
       return;
     }
-    console.log("Disconnected:", stdout || stderr);
+    log("Disconnected: " + (stdout || stderr));
 
-    exec(`${nordvpnExe} -c -g "Canada"`, (err2, stdout2, stderr2) => {
-      if (err2) {
-        console.error("Error connecting:", err2.message);
-      } else {
-        console.log("Connected:", stdout2 || stderr2);
-      }
-      reconnecting = false; // Reset flag once reconnect attempt finishes
-    });
+    // Wait 5 seconds before reconnect
+    setTimeout(() => {
+      const countries = ["Canada", "France", "Netherlands", "Germany", "Sweden"];
+      const randomCountry = countries[Math.floor(Math.random() * countries.length)];
+
+      exec(`${nordvpnExe} -c -g "${randomCountry}"`, (err2, stdout2, stderr2) => {
+        if (err2) {
+          log("❌ Error connecting: " + err2.message);
+        } else {
+          log(`✅ Connected to ${randomCountry}: ${stdout2 || stderr2}`);
+        }
+        reconnecting = false;
+      });
+    }, 5000);
   });
 }
 
-
-// Function to check server status
+// ────────────────────────────────────────────────────────────────
+// Server Health Check
+// ────────────────────────────────────────────────────────────────
 async function checkServer() {
+  if (Date.now() < cooldownUntil) {
+    log("⏸ Cooldown active — skipping this check.");
+    return;
+  }
+
   try {
     const res = await fetch(url);
-    console.log(`[${new Date().toISOString()}] Status code:`, res.status);
+    log(`Status code: ${res.status}`);
 
     if (res.status !== 200) {
-      console.log("❌ Server not reachable. Triggering reconnect...");
+      log("❌ Server not reachable. Triggering reconnect...");
       reconnectNordVPN("Switch due to error");
     } else {
-      console.log("✅ Server is reachable. No action needed.");
+      log("✅ Server is reachable. No action needed.");
     }
   } catch (err) {
-    console.log("❌ Error reaching server:", err.message);
-    reconnectNordVPN("Switch due to error");
+    log("❌ Error reaching server: " + err.message);
+    reconnectNordVPN("Switch due to network error");
   }
 }
 
-// Run immediately
+// ────────────────────────────────────────────────────────────────
+// Run immediately + intervals
+// ────────────────────────────────────────────────────────────────
 checkServer();
 
-// Run health check every 1 min
-setInterval(checkServer, 60000);
+// Check every 2 minutes
+setInterval(checkServer, 120000);
 
-// Regular reconnect every 1 hour (3600000 ms)
+// Regular reconnect every hour
 setInterval(() => reconnectNordVPN("Regular switch"), 3600000);
