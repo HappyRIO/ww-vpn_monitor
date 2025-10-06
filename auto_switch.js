@@ -151,7 +151,7 @@ async function checkServer() {
 checkServer();
 
 // Check every 2 minutes
-setInterval(checkServer, 120000);
+setInterval(checkServer, 60000);
 
 // Regular reconnect every hour
-setInterval(() => reconnectNordVPN("Hourly refresh"), 3600000);
+setInterval(() => reconnectNordVPN("Hourly refresh"), 1800000);
