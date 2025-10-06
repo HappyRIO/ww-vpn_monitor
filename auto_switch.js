@@ -10,20 +10,35 @@ const nordvpnExe = `"${path.join("C:", "Program Files", "NordVPN", "nordvpn.exe"
 
 // Verify NordVPN executable exists
 if (!fs.existsSync(path.join("C:", "Program Files", "NordVPN", "nordvpn.exe"))) {
-  console.error("❌ NordVPN executable not found. Check your installation path.");
+  console.error("\x1b[31m❌ NordVPN executable not found. Check your installation path.\x1b[0m");
   process.exit(1);
 }
 
 // ────────────────────────────────────────────────────────────────
-// Logging helper
+// Logging helper (console + file)
 // ────────────────────────────────────────────────────────────────
-function log(msg) {
-  const line = `[${new Date().toISOString()}] ${msg}\n`;
-  console.log(line.trim());
+function log(type, msg) {
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] ${msg}\n`;
   fs.appendFileSync("vpn-monitor.log", line);
+
+  const colors = {
+    info: "\x1b[36m",      // cyan
+    success: "\x1b[32m",   // green
+    warn: "\x1b[33m",      // yellow
+    error: "\x1b[31m",     // red
+    reset: "\x1b[0m",
+  };
+
+  let color = colors.info;
+  if (type === "success") color = colors.success;
+  else if (type === "warn") color = colors.warn;
+  else if (type === "error") color = colors.error;
+
+  console.log(`${color}${line.trim()}${colors.reset}`);
 }
 
-log("✅ Script started");
+log("success", "✅ Script started");
 
 // ────────────────────────────────────────────────────────────────
 // Globals
@@ -38,16 +53,16 @@ function reconnectNordVPN(reason = "Switch") {
   if (reconnecting) return;
   reconnecting = true;
 
-  log(`Reconnecting NordVPN (${reason})...`);
+  log("warn", `🔄 Reconnecting NordVPN (${reason})...`);
   cooldownUntil = Date.now() + 30000; // 30-second cooldown
 
   exec(`${nordvpnExe} -d`, (err, stdout, stderr) => {
     if (err) {
-      log("❌ Error disconnecting: " + err.message);
+      log("error", "❌ Error disconnecting: " + err.message);
       reconnecting = false;
       return;
     }
-    log("Disconnected: " + (stdout || stderr));
+    log("info", "🔌 Disconnected: " + (stdout || stderr).trim());
 
     // Wait 5 seconds before reconnect
     setTimeout(() => {
@@ -56,9 +71,9 @@ function reconnectNordVPN(reason = "Switch") {
 
       exec(`${nordvpnExe} -c -g "${randomCountry}"`, (err2, stdout2, stderr2) => {
         if (err2) {
-          log("❌ Error connecting: " + err2.message);
+          log("error", "❌ Error connecting: " + err2.message);
         } else {
-          log(`✅ Connected to ${randomCountry}: ${stdout2 || stderr2}`);
+          log("success", `✅ Connected to ${randomCountry}: ${(stdout2 || stderr2).trim()}`);
         }
         reconnecting = false;
       });
@@ -71,22 +86,22 @@ function reconnectNordVPN(reason = "Switch") {
 // ────────────────────────────────────────────────────────────────
 async function checkServer() {
   if (Date.now() < cooldownUntil) {
-    log("⏸ Cooldown active — skipping this check.");
+    log("warn", "⏸ Cooldown active — skipping this check.");
     return;
   }
 
   try {
     const res = await fetch(url);
-    log(`Status code: ${res.status}`);
+    log("info", `🌐 Status code: ${res.status}`);
 
     if (res.status !== 200) {
-      log("❌ Server not reachable. Triggering reconnect...");
+      log("warn", "❌ Server not reachable. Triggering reconnect...");
       reconnectNordVPN("Switch due to error");
     } else {
-      log("✅ Server is reachable. No action needed.");
+      log("success", "✅ Server is reachable. No action needed.");
     }
   } catch (err) {
-    log("❌ Error reaching server: " + err.message);
+    log("error", "❌ Error reaching server: " + err.message);
     reconnectNordVPN("Switch due to network error");
   }
 }
