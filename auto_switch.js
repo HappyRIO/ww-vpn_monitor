@@ -6,45 +6,60 @@ const fs = require("fs");
 const url = "https://baberuthsports.com/";
 
 // Full path to NordVPN CLI executable
-const nordvpnExe = `"${path.join("C:", "Program Files", "NordVPN", "nordvpn.exe")}"`;
+const nordvpnExe = `"${path.join(
+  "C:",
+  "Program Files",
+  "NordVPN",
+  "nordvpn.exe"
+)}"`;
 
 // Verify NordVPN executable exists
-if (!fs.existsSync(path.join("C:", "Program Files", "NordVPN", "nordvpn.exe"))) {
-  console.error("\x1b[31m❌ NordVPN executable not found. Check your installation path.\x1b[0m");
+if (
+  !fs.existsSync(path.join("C:", "Program Files", "NordVPN", "nordvpn.exe"))
+) {
+  console.error(
+    "❌ NordVPN executable not found. Check your installation path."
+  );
   process.exit(1);
 }
 
 // ────────────────────────────────────────────────────────────────
-// Logging helper (console + file)
+// Logging helper
 // ────────────────────────────────────────────────────────────────
-function log(type, msg) {
-  const timestamp = new Date().toISOString();
-  const line = `[${timestamp}] ${msg}\n`;
-  fs.appendFileSync("vpn-monitor.log", line);
-
+function log(level, msg) {
   const colors = {
-    info: "\x1b[36m",      // cyan
-    success: "\x1b[32m",   // green
-    warn: "\x1b[33m",      // yellow
-    error: "\x1b[31m",     // red
-    reset: "\x1b[0m",
+    info: "\x1b[36m", // cyan
+    warn: "\x1b[33m", // yellow
+    error: "\x1b[31m", // red
+    success: "\x1b[32m", // green
   };
-
-  let color = colors.info;
-  if (type === "success") color = colors.success;
-  else if (type === "warn") color = colors.warn;
-  else if (type === "error") color = colors.error;
-
-  console.log(`${color}${line.trim()}${colors.reset}`);
+  const color = colors[level] || "\x1b[37m";
+  const line = `[${new Date().toISOString()}] ${msg}`;
+  console.log(color + line + "\x1b[0m");
+  fs.appendFileSync("vpn-monitor.log", line + "\n");
 }
 
-log("success", "✅ Script started");
+log("info", "✅ Script started");
 
 // ────────────────────────────────────────────────────────────────
 // Globals
 // ────────────────────────────────────────────────────────────────
 let reconnecting = false;
 let cooldownUntil = 0;
+let failCount = 0;
+
+// ────────────────────────────────────────────────────────────────
+// Browser-like Headers for fetch()
+// ────────────────────────────────────────────────────────────────
+const realisticHeaders = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+    "AppleWebKit/537.36 (KHTML, like Gecko) " +
+    "Chrome/120.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  Connection: "keep-alive",
+};
 
 // ────────────────────────────────────────────────────────────────
 // VPN Reconnect
@@ -62,21 +77,34 @@ function reconnectNordVPN(reason = "Switch") {
       reconnecting = false;
       return;
     }
-    log("info", "🔌 Disconnected: " + (stdout || stderr).trim());
+    log("info", "🔌 Disconnected: " + (stdout || stderr));
 
-    // Wait 5 seconds before reconnect
     setTimeout(() => {
-      const countries = ["Canada", "Australia", "Hong Kong", "Taiwan", "Poland", "Ireland"];
-      const randomCountry = countries[Math.floor(Math.random() * countries.length)];
+      const countries = [
+        "Canada",
+        "Australia",
+        "Hong Kong",
+        "Taiwan",
+        "Poland",
+        "Ireland",
+      ];
+      const randomCountry =
+        countries[Math.floor(Math.random() * countries.length)];
 
-      exec(`${nordvpnExe} -c -g "${randomCountry}"`, (err2, stdout2, stderr2) => {
-        if (err2) {
-          log("error", "❌ Error connecting: " + err2.message);
-        } else {
-          log("success", `✅ Connected to ${randomCountry}: ${(stdout2 || stderr2).trim()}`);
+      exec(
+        `${nordvpnExe} -c -g "${randomCountry}"`,
+        (err2, stdout2, stderr2) => {
+          if (err2) {
+            log("error", "❌ Error connecting: " + err2.message);
+          } else {
+            log(
+              "success",
+              `✅ Connected to ${randomCountry}: ${stdout2 || stderr2}`
+            );
+          }
+          reconnecting = false;
         }
-        reconnecting = false;
-      });
+      );
     }, 5000);
   });
 }
@@ -91,23 +119,34 @@ async function checkServer() {
   }
 
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: realisticHeaders });
     log("info", `🌐 Status code: ${res.status}`);
 
     if (res.status !== 200) {
-      log("warn", "❌ Server not reachable. Triggering reconnect...");
-      reconnectNordVPN("Switch due to error");
+      failCount++;
+      log("warn", `⚠️ Failed (${failCount}/3)`);
+
+      if (failCount >= 3) {
+        reconnectNordVPN("3 consecutive errors");
+        failCount = 0;
+      }
     } else {
-      log("success", "✅ Server is reachable. No action needed.");
+      if (failCount > 0) log("success", "✅ Server recovered.");
+      failCount = 0;
+      log("success", "✅ Server reachable.");
     }
   } catch (err) {
-    log("error", "❌ Error reaching server: " + err.message);
-    reconnectNordVPN("Switch due to network error");
+    failCount++;
+    log("error", `❌ Fetch error (${failCount}/3): ${err.message}`);
+    if (failCount >= 3) {
+      reconnectNordVPN("3 consecutive fetch errors");
+      failCount = 0;
+    }
   }
 }
 
 // ────────────────────────────────────────────────────────────────
-// Run immediately + intervals
+// Schedule tasks
 // ────────────────────────────────────────────────────────────────
 checkServer();
 
@@ -115,4 +154,4 @@ checkServer();
 setInterval(checkServer, 120000);
 
 // Regular reconnect every hour
-setInterval(() => reconnectNordVPN("Regular switch"), 1800000);
+setInterval(() => reconnectNordVPN("Hourly refresh"), 3600000);
