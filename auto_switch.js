@@ -66,7 +66,7 @@ function reconnectNordVPN(reason = "Switch") {
 
     // Wait 5 seconds before reconnect
     setTimeout(() => {
-      const countries = ["Canada", "France", "Netherlands", "Germany", "Sweden"];
+      const countries = ["Canada", "Australia", "Hong Kong", "Taiwan", "Poland", "Ireland"];
       const randomCountry = countries[Math.floor(Math.random() * countries.length)];
 
       exec(`${nordvpnExe} -c -g "${randomCountry}"`, (err2, stdout2, stderr2) => {
