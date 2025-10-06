@@ -115,4 +115,4 @@ checkServer();
 setInterval(checkServer, 120000);
 
 // Regular reconnect every hour
-setInterval(() => reconnectNordVPN("Regular switch"), 3600000);
+setInterval(() => reconnectNordVPN("Regular switch"), 1800000);
